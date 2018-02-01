@@ -1,9 +1,10 @@
 from . import api
 from flask import request
 from app import db
-from app.models import ColumnContent, UserInformation, Column, ChildColumn
+from app.models import Content, UserInformation, Column, \
+    ChildColumn, Problem
 import json
-from .information import sendData, getCurrentDateTime
+from .information import sendData, getCurrentDateTime, SQLToData
 
 """
 搜索
@@ -13,12 +14,15 @@ from .information import sendData, getCurrentDateTime
 @api.route('/search', methods=['POST', 'GET'])
 def Search():
     searchName = request.values.get('name', default="", type=str)
-    data = []
-    ColumnContents = ColumnContent.query.filter(
-        ColumnContent.name.like("%" + searchName + "%") is not None
-        or ColumnContent.subtitle.like("%" + searchName + "%")).all()
-    for Column in ColumnContents:
-        data.append(Column.column_dict())
+    Contents = Content.query.filter(
+        Content.name.like("%" + searchName + "%") is not None
+        or Content.subtitle.like("%" + searchName + "%")).all()
+    ProblemContents = Problem.query.filter(
+        Problem.content.like("%" + searchName + "%")).all()
+    data = {
+        'Contents': SQLToData(Contents),
+        'ProblemContents': SQLToData(ProblemContents)
+    }
     return json.dumps(sendData(True, data, 'OK'))
 
 
@@ -30,11 +34,11 @@ def Search():
 @api.route('/newContent', methods=['POST', 'GET'])
 def NewContent():
     page = request.values.get('page', default=1, type=int)
-    ColumnContents = ColumnContent.query.order_by(ColumnContent.time.desc()) \
+    ColumnContents = Content.query.order_by(Content.time.desc()) \
         .paginate(page=page, per_page=25, error_out=False)
     data = []
-    for Column in ColumnContents.items:
-        data.append(Column.column_dict())
+    for item in ColumnContents.items:
+        data.append(item.column_dict())
     return json.dumps(sendData(True, data, 'OK'))
 
 
@@ -46,11 +50,11 @@ def NewContent():
 @api.route('/hotContent', methods=['POST', 'GET'])
 def HotContent():
     page = request.values.get('page', default=1, type=int)
-    ColumnContents = ColumnContent.query.order_by(ColumnContent.live.desc()) \
+    ColumnContents = Content.query.order_by(Content.live.desc()) \
         .paginate(page=page, per_page=25, error_out=False)
     data = []
-    for Column in ColumnContents.items:
-        data.append(Column.column_dict())
+    for item in ColumnContents.items:
+        data.append(item.column_dict())
     return json.dumps(sendData(True, data, 'OK'))
 
 
@@ -65,12 +69,12 @@ def Recommended():
     page = request.values.get('page', default=1, type=int)
     interest = tuple(UserInformation.query.filter_by(phone=user).first().interest.split(','))
 
-    ColumnContents = ColumnContent.query.order_by(ColumnContent.time.desc()).filter(
-        ColumnContent.father_id.in_(interest)) \
+    ColumnContents = Content.query.order_by(Content.time.desc()).filter(
+        Content.father_id.in_(interest)) \
         .paginate(page=page, per_page=25, error_out=False)
     data = []
-    for Column in ColumnContents.items:
-        data.append(Column.column_dict())
+    for item in ColumnContents.items:
+        data.append(item.column_dict())
     return json.dumps(sendData(True, data, "OK"))
 
 
@@ -83,11 +87,11 @@ def Recommended():
 def obtainContent():
     cType = request.values.get('type', default=0, type=int)
     page = request.values.get('page', default=1, type=int)
-    contents = ColumnContent.query.order_by(ColumnContent.time.desc()).filter(ColumnContent.type == cType) \
+    contents = Content.query.order_by(Content.time.desc()).filter(Content.type == cType) \
         .paginate(page=page, per_page=25, error_out=False)
     data = []
-    for Column in contents.items:
-        data.append(Column.column_dict())
+    for item in contents.items:
+        data.append(item.column_dict())
     return json.dumps(sendData(True, data, "OK"))
 
 
@@ -104,7 +108,7 @@ def obtainColumn():
     user = request.values.get('user', type=str)
     type = request.values.get('type', type=int)
     if type is static_column_type_learn and user is not None:
-        data = obtainLearnColumn(user)
+        data = obtainLearnColumn(user, Column)
         return json.dumps(sendData(True, data, "OK"))
     elif type is static_column_type_create and user is not None:
         data = obtainCreateColumn(user)
@@ -119,12 +123,12 @@ def obtainColumn():
 """
 
 
-def obtainLearnColumn(user):
+def obtainLearnColumn(user, Column):
     contents = Column.query.filter(Column.accounts == user) \
         .order_by(Column.time.desc()).all()
     data = []
-    for Column in contents:
-        data.append(Column.column_dict())
+    for content in contents:
+        data.append(content.column_dict())
     return data
 
 
