@@ -2,7 +2,8 @@
 import os
 
 from . import api
-from flask import request
+from flask import request, g
+from flask_login import login_user, logout_user, login_required, current_user
 import random
 import time, datetime
 from tool import aliyun_MSM
@@ -10,8 +11,8 @@ import uuid
 from app.models import ValidateCode, Major, UserInformation, \
     UserRegistered, Login, Column, ChildColumn, Description, Content, Preference, \
     Subject, Orientation
-from app import db
-from manage import photos
+from app import db, auth, login_manager
+from manage import photos, app
 import json
 
 """
@@ -50,11 +51,11 @@ def registered():
         source = request.values.get('source', default=0, type=int)  # 注册来源
         registered_time = getCurrentDateTime()  # 注册时间
         user_status = request.values.get('status', default=0, type=int)  # 账户状态
-        sex = request.values.get('sex', default=0, type=int)    # 性别
-        birthday = StrToDate(request.values.get('birthday', default=None, type=str))    # 生日
-        uuid = request.values.get('sex', default='', type=str)      # 客户端唯一ID
-        introduction = request.values.get('introduction', default='请填写签名', type=str)    # 签名
-        address = request.values.get('address', default=None, type=str)     # 地址
+        sex = request.values.get('sex', default=0, type=int)  # 性别
+        birthday = StrToDate(request.values.get('birthday', default=None, type=str))  # 生日
+        uuid = request.values.get('sex', default='', type=str)  # 客户端唯一ID
+        introduction = request.values.get('introduction', default='请填写签名', type=str)  # 签名
+        address = request.values.get('address', default=None, type=str)  # 地址
         learnInterests = InformationSplit(request.values.get('learnInterest', default=None, type=str))  # 学习兴趣点
         manufactureInterests = InformationSplit(
             request.values.get('manufactureInterest', default=None, type=str))  # 制造兴趣点
@@ -99,7 +100,7 @@ def InformationSplit(information):
 
 @api.route('/api/login', methods=['POST', 'GET'])
 def login():
-    phone = request.values.get('phone', default=None, type=str)
+    phone = request.values.get('username', default=None, type=str)
     password = request.values.get('password', default=None, type=str)
     login_time = getCurrentDateTime()
     login_ip = str(request.remote_addr)
@@ -107,24 +108,25 @@ def login():
     longitude = request.values.get('longitude', default='', type=str)
     latitude = request.values.get('latitude', default='', type=str)
     location = request.values.get('location', default='', type=str)
-    loginModel = Login(phone=phone, login_time=login_time, login_ip=login_ip, login_mode=login_mode,
-                       longitude=longitude, latitude=latitude, location=location)
+    login = Login(phone=phone, login_time=login_time, login_ip=login_ip, login_mode=login_mode,
+                  longitude=longitude, latitude=latitude, location=location)
     try:
         user = UserInformation.query.filter_by(phone=phone).first()
     except Exception as e:
         user = None
     if user is not None and user.verify_password(password):
-        loginModel.state = 1
-        data = json.dumps(sendData(True, "登陆成功", 'OK'))
+        login.state = 1
+        data = json.dumps(sendData(True, {"token": str(user.generate_auth_token()), "msg": "登陆成功"}, 'OK'))
+        login_user(user)
     elif user is None:
-        loginModel.state = 0
+        login.state = 0
         data = json.dumps(sendData(False, "该帐号未注册，请注册后再次登录", 'ERROR_NO_USER'))
 
     else:
-        loginModel.state = -1
+        login.state = -1
         data = json.dumps(sendData(False, "密码错误，请确认密码后登录", 'ERROR_PASSWORD'))
 
-    db.session.add(loginModel)
+    db.session.add(login)
     db.session.commit()
     return data
 
@@ -136,7 +138,7 @@ def login():
 
 @api.route("/api/changePassword", methods=["POST", "GET"])
 def changePassword():
-    phone = request.values.get('phone', default=None, type=str)
+    phone = request.values.get('username', default=None, type=str)
     password = request.values.get('password', default=None, type=str)
     try:
         user = UserInformation.query.filter_by(phone=phone).first();
@@ -145,6 +147,8 @@ def changePassword():
     if user is None:
         return json.dumps(sendData(False, "该手机号未注册", 'ERROR_NO_USER'))
     user.password = password
+    db.session.add(user)
+    db.session.commit()
     return json.dumps(sendData(True, "修改完成,请登录", 'OK'))
 
 
@@ -207,10 +211,66 @@ def getMajor():
         data = {"name": father.name,
                 "identity": father.identity,
                 "introduction": father.introduction,
+                "picture": father.picture,
                 "child": getSubject(father.child)
                 }
         datas.append(data)
     return json.dumps(sendData(True, datas, 'OK'))
+
+
+"""
+获取旗下专业学科
+"""
+
+
+def getSubject(modules):
+    datas = []
+    for module in modules:
+        data = {"name": module.name,
+                "identity": module.identity,
+                "introduction": module.introduction,
+                "picture": module.picture,
+                "father_id": module.father_id}
+        datas.append(data)
+    return datas
+
+
+"""
+获取DIY的方向
+"""
+
+
+@api.route('/api/getOrientation', methods=['POST', 'GET'])
+def getOrientation():
+    fathers = Orientation.query.all()
+    datas = []
+    for father in fathers:
+        data = {"name": father.name,
+                "identity": father.identity,
+                "introduction": father.introduction,
+                "url": father.url,
+                "picture": father.picture,
+                "child": getDescription(father.child)
+                }
+        datas.append(data)
+    return json.dumps(sendData(True, datas, 'OK'))
+
+
+"""
+方向下的种类
+"""
+
+
+def getDescription(modules):
+    datas = []
+    for module in modules:
+        data = {"name": module.name,
+                "identity": module.identity,
+                "introduction": module.introduction,
+                "picture": module.picture,
+                "father_id": module.father_id}
+        datas.append(data)
+    return datas
 
 
 """
@@ -227,48 +287,32 @@ def getMajor():
 
 
 @api.route('/api/setModular', methods=['POST', 'GET'])
+@login_required
 def setModular():
     name = request.values.get('name', type=str)
     identity = request.values.get('id', type=int)
     registered_time = getCurrentDateTime()
-    founder = request.values.get('phone', type=str)
+    founder = current_user.get_id()
     introduction = request.values.get('introduction', type=str)
     majorType = request.values.get('type', type=int)
     father_id = request.values.get('father_id', type=int)
-    file_url = saveRequestFile(value='picture', file_url='photos/avatar')
+    file_url = saveRequestFile(value='picture')
 
     if majorType is 0:
         column = Major(name=name, identity=identity, time=registered_time, founder=founder,
-                       introduction=introduction, picture=file_url)
+                       introduction=introduction, picture=file_url, url='')
     elif majorType is 1:
         column = Subject(name=name, identity=identity, time=registered_time, founder=founder,
-                         introduction=introduction, picture=file_url, father_id=father_id)
-    elif majorType is 2:
-        column = Description(name=name, identity=identity, time=registered_time, founder=founder,
-                             introduction=introduction, picture=file_url)
+                         introduction=introduction, picture=file_url, father_id=father_id, url='')
     elif majorType is 3:
+        column = Description(name=name, identity=identity, time=registered_time, founder=founder,
+                             introduction=introduction, picture=file_url, father_id=father_id, url='')
+    elif majorType is 2:
         column = Orientation(name=name, identity=identity, time=registered_time, founder=founder,
-                             introduction=introduction, picture=file_url, father_id=father_id)
+                             introduction=introduction, picture=file_url, url='')
     db.session.add(column)
     db.session.commit()
     return json.dumps(sendData(True, "提交成功", "OK"))
-
-
-"""
-获取旗下专业学科
-"""
-
-
-@api.route('/api/getSubject', methods=['POST', 'GET'])
-def getSubject(modules):
-    datas = []
-    for module in modules:
-        data = {"name": module.name,
-                "identity": module.identity,
-                "introduction": module.introduction,
-                "picture": module.picture}
-        datas.append(data)
-    return datas
 
 
 """
@@ -280,29 +324,29 @@ def getSubject(modules):
 
 
 @api.route("/api/getColumn", methods=['POST', 'GET'])
+@login_required
 def getColumn():
     columnType = request.values.get('columnType', default=2, type=int)
     fatherID = request.values.get('fatherID', default=0, type=str)
-    phone = request.values.get('phone', default='', type=str)
+    phone = current_user.get_id()
 
     # 全部类型
     if columnType is 2:
         # 无父ID
         if fatherID is 0:
-            columns = Column.query.filter_by(Column.phone is phone).order_by(Column.time.desc()).all()
+            columns = Column.query.filter_by(phone=phone).order_by(Column.time.desc()).all()
         else:
-            columns = Column.query.filter_by(Column.phone is phone and
-                                             Column.father_identity == fatherID) \
+            columns = Column.query.filter_by(phone=phone, father_id=fatherID) \
                 .order_by(Column.time.desc()).all()
     else:
         if fatherID is 0:
-            columns = Column.query.filter_by(Column.phone is phone and
-                                             Column.type == columnType) \
+            columns = Column.query.filter_by(phone=phone,
+                                             type=columnType) \
                 .order_by(Column.time.desc()).all()
         else:
-            columns = Column.query.filter_by(Column.phone is phone and
-                                             Column.type is columnType and
-                                             Column.father_identity == fatherID) \
+            columns = Column.query.filter_by(phone=phone,
+                                             type=columnType,
+                                             father_id=fatherID) \
                 .order_by(Column.time.desc()).all()
 
     datas = []
@@ -325,7 +369,6 @@ def getColumn():
 """
 
 
-@api.route('/api/getChildColumn', methods=['POST', 'GET'])
 def getChildColumn(modules):
     datas = []
     for module in modules:
@@ -354,11 +397,12 @@ def getChildColumn(modules):
 
 
 @api.route('/api/setColumn', methods=['POST', 'GET'])
+@login_required
 def setColumn():
     name = request.values.get('name', type=str)
     introduction = request.values.get('introduction', type=str)
     currentTime = getCurrentDateTime()
-    phone = request.values.get('phone', type=str)
+    phone = current_user.get_id()
     picture = saveRequestFile('picture', 'photos/avatar')
     columnType = request.values.get('columnType', type=int)
     father_id = request.values.get('father_id', type=int)
@@ -376,11 +420,12 @@ def setColumn():
 
 
 @api.route('/api/setChildColumn', methods=['POST', 'GET'])
+@login_required
 def setChildColumn():
     name = request.values.get('name', type=str)
     introduction = request.values.get('introduction', type=str)
     currentTime = getCurrentDateTime()
-    phone = request.values.get('phone', type=str)
+    phone = current_user.get_id()
     picture = saveRequestFile('picture', 'photos/avatar')
     columnType = request.values.get('columnType', type=int)
     father_id = request.values.get('father_id', type=int)
@@ -400,6 +445,7 @@ def setChildColumn():
 
 
 @api.route('/api/getColumnContent', methods=['POST', 'GET'])
+@login_required
 def getColumnContent():
     columnID = request.values.get('columnID', default=None, type=str)
     columnType = request.values.get('columnType', type=int)
@@ -419,12 +465,13 @@ def getColumnContent():
 
 
 @api.route('/api/setColumnContent', methods=['POST', 'GET'])
+@login_required
 def setColumnContent():
     name = request.values.get('name')
     subitile = request.values.get('subtitle')
     content_details = request.values.get('content')
     time = getCurrentDateTime()
-    phone = request.values.get('phone')
+    phone = current_user.get_id()
     photo = saveRequestFile('photo')
     video = saveRequestFile('video')
     audio = saveRequestFile('audio')
@@ -439,44 +486,6 @@ def setColumnContent():
                       type=type, father_id=father_id)
     db.session.add(content)
     db.session.commit()
-
-
-"""
-获取DIY的方向
-"""
-
-
-@api.route('/api/getDescription', methods=['POST', 'GET'])
-def getDescription():
-    fathers = Description.query.all()
-    datas = []
-    for father in fathers:
-        data = {"name": father.name,
-                "identity": father.identity,
-                "introduction": father.introduction,
-                "url": father.url,
-                "picture": father.picture,
-                "child": getSubject(father.child)
-                }
-        datas.append(data)
-    return json.dumps(sendData(True, datas, 'OK'))
-
-
-"""
-方向下的种类
-"""
-
-
-@api.route('/api/getOrientation', methods=['POST', 'GET'])
-def getOrientation(modules):
-    datas = []
-    for module in modules:
-        data = {"name": module.name,
-                "identity": module.identity,
-                "introduction": module.introduction,
-                "picture": module.picture}
-        datas.append(data)
-    return datas
 
 
 """
@@ -534,14 +543,27 @@ def getCurrentDateTime():
 
 """
 保存照片
+@ value request参数
+@ fileUrl   文件存储路径
+@ defaultUrl  没有文件使用默认文件路径 
 """
 
 
-def saveRequestFile(value, fileUrl="", defaultUrl='/photos/默认图片'):
+def saveRequestFile(value, fileUrl=None, defaultUrl=None):
     if value in request.files:
         for filename in request.files.getlist(value):
             filename = photos.save(filename, folder=fileUrl)
             file_url = photos.url(filename)
     else:
-        file_url = os.getcwd() + defaultUrl
+        file_url = defaultUrl
     return file_url
+
+
+@login_manager.user_loader
+def reload_user(username):
+    token = request.values.get('token', type=str)
+    user = UserInformation.verify_auth_token(token=token)
+    if username == user:
+        return UserInformation.query.filter_by(phone=user).first()
+    else:
+        return None

@@ -2,30 +2,34 @@
 SQL db
 """
 from . import db
+from manage import app
 from datetime import datetime
 from werkzeug.security import generate_password_hash, check_password_hash
+from flask_login import UserMixin
+from itsdangerous import (TimedJSONWebSignatureSerializer
+                          as Serializer, BadSignature, SignatureExpired)
 
 """
 用户资料表
 """
 
 
-class UserInformation(db.Model):
+class UserInformation(db.Model, UserMixin):
     __table_name__ = 'user_information'
     id = db.Column(db.INT, primary_key=True)
-    phone = db.Column(db.VARCHAR)               # 手机号
-    email = db.Column(db.VARCHAR)               # 邮箱
-    username = db.Column(db.VARCHAR)            # 用户名
-    password_hash = db.Column(db.VARCHAR)       # 加密后密码
-    avatar = db.Column(db.VARCHAR)              # 头像路径
-    user_status = db.Column(db.SMALLINT)        # 用户状态
-    sex = db.Column(db.SMALLINT)                # 性别
-    birthday = db.Column(db.DATE)               # 生日
-    login_state = db.Column(db.SMALLINT)        # 登录状态
-    uuid = db.Column(db.VARCHAR)                # 客户端唯一标识位
-    introduction = db.Column(db.VARCHAR)        # 个人介绍
-    address = db.Column(db.VARCHAR)             # 地址
-    permissions = db.Column(db.Integer)         # 权限
+    phone = db.Column(db.VARCHAR)  # 手机号
+    email = db.Column(db.VARCHAR)  # 邮箱
+    username = db.Column(db.VARCHAR)  # 用户名
+    password_hash = db.Column(db.VARCHAR)  # 加密后密码
+    avatar = db.Column(db.VARCHAR)  # 头像路径
+    user_status = db.Column(db.SMALLINT)  # 用户状态
+    sex = db.Column(db.SMALLINT)  # 性别
+    birthday = db.Column(db.DATE)  # 生日
+    login_state = db.Column(db.SMALLINT)  # 登录状态
+    uuid = db.Column(db.VARCHAR)  # 客户端唯一标识位
+    introduction = db.Column(db.VARCHAR)  # 个人介绍
+    address = db.Column(db.VARCHAR)  # 地址
+    permissions = db.Column(db.Integer)  # 权限
 
     @property
     def password(self):
@@ -38,6 +42,23 @@ class UserInformation(db.Model):
     def verify_password(self, password):
         return check_password_hash(self.password_hash, password)
 
+    def get_id(self):
+        return self.phone
+
+    def generate_auth_token(self, expiration=600):
+        s = Serializer(app.config['SECRET_KEY'], expires_in=expiration)
+        return s.dumps({'phone': self.phone})
+
+    @staticmethod
+    def verify_auth_token(token):
+        s = Serializer(app.config['SECRET_KEY'])
+        try:
+            data = s.loads(token)
+        except SignatureExpired:
+            return None  # valid token, but expired
+        except BadSignature:
+            return None  # invalid token
+        return data['phone']
 
 """
 用户注册表
@@ -47,9 +68,9 @@ class UserInformation(db.Model):
 class UserRegistered(db.Model):
     __table_name__ = 'user_registered'
     id = db.Column(db.INT, primary_key=True)
-    phone = db.Column(db.VARCHAR)                   # 手机号
-    sourceint = db.Column(db.SMALLINT)              # 用户注册来源(0->iPhone, 1->iPad, 2->Android, 3->微信, 4->H5, 5->网站，6->未知)'
-    registered_time = db.Column(db.DATETIME)        # 注册时间
+    phone = db.Column(db.VARCHAR)  # 手机号
+    sourceint = db.Column(db.SMALLINT)  # 用户注册来源(0->iPhone, 1->iPad, 2->Android, 3->微信, 4->H5, 5->网站，6->未知)'
+    registered_time = db.Column(db.DATETIME)  # 注册时间
 
 
 """
@@ -60,15 +81,15 @@ class UserRegistered(db.Model):
 class Login(db.Model):
     __table_name__ = 'login'
     id = db.Column(db.INT, primary_key=True)
-    phone = db.Column(db.VARCHAR)                  # 手机号
-    login_ip = db.Column(db.VARCHAR)               # 登录IP
-    login_time = db.Column(db.DATETIME)            # 登陆时间
-    longitude = db.Column(db.VARCHAR)              # 登录经度
-    login_mode = db.Column(db.INT)                 # 登录方式  1.Android 2.IOS 3.其他 4.web
-    location = db.Column(db.VARCHAR)               # 登陆地址
-    latitude = db.Column(db.VARCHAR)               # 登陆纬度
-    state = db.Column(db.INT)                      # 登录状态 -1-密码错误 0-无账户 1-成功
-    user_id = db.Column(db.Integer)                # 唯一ID
+    phone = db.Column(db.VARCHAR)  # 手机号
+    login_ip = db.Column(db.VARCHAR)  # 登录IP
+    login_time = db.Column(db.DATETIME)  # 登陆时间
+    longitude = db.Column(db.VARCHAR)  # 登录经度
+    login_mode = db.Column(db.INT)  # 登录方式  1.Android 2.IOS 3.其他 4.web
+    location = db.Column(db.VARCHAR)  # 登陆地址
+    latitude = db.Column(db.VARCHAR)  # 登陆纬度
+    state = db.Column(db.INT)  # 登录状态 -1-密码错误 0-无账户 1-成功
+    user_id = db.Column(db.Integer)  # 唯一ID
 
 
 """
@@ -79,10 +100,10 @@ class Login(db.Model):
 class Preference(db.Model):
     __table_name__ = 'preference'
     id = db.Column(db.Integer, primary_key=True)
-    phone = db.Column(db.VARCHAR)                   # 手机号
-    child_column_id = db.Column(db.INT)             # 栏目ID
-    found_time = db.Column(db.DATETIME)                   # 时间
-    preference_type = db.Column(db.INT)                        # 类型    0 学习  1 创造
+    phone = db.Column(db.VARCHAR)  # 手机号
+    child_column_id = db.Column(db.INT)  # 栏目ID
+    found_time = db.Column(db.DATETIME)  # 时间
+    preference_type = db.Column(db.INT)  # 类型    0 学习  1 创造
 
 
 """
@@ -147,12 +168,12 @@ class Behavior(db.Model):
 class ValidateCode(db.Model):
     __table_name__ = 'validate_code'
     id = db.Column(db.Integer, primary_key=True)
-    validate = db.Column(db.VARCHAR)                # 验证码
+    validate = db.Column(db.VARCHAR)  # 验证码
     time = db.Column(db.INT)
     phone = db.Column(db.VARCHAR)
     standard_time = db.Column(db.VARCHAR)
-    state = db.Column(db.VARCHAR)                   # 状态
-    message = db.Column(db.VARCHAR)                 # 返回消息
+    state = db.Column(db.VARCHAR)  # 状态
+    message = db.Column(db.VARCHAR)  # 返回消息
 
 
 """
@@ -235,8 +256,8 @@ class Description(db.Model):
 class Column(db.Model):
     __table_name__ = 'column'
     id = db.Column(db.INT, primary_key=True)
-    name = db.Column(db.VARCHAR)                                    # 栏目名
-    introduction = db.Column(db.VARCHAR)                            # 介绍
+    name = db.Column(db.VARCHAR)  # 栏目名
+    introduction = db.Column(db.VARCHAR)  # 介绍
     push_time = db.Column(db.DATETIME)
     column_interval = db.Column(db.INT)
     time = db.Column(db.DATETIME)
@@ -244,7 +265,7 @@ class Column(db.Model):
     praise = db.Column(db.INT)
     father_id = db.Column(db.INT)
     picture = db.Column(db.VARCHAR)
-    type = db.Column(db.INT)                                         # 类型 0：学习，1：创造
+    type = db.Column(db.INT)  # 类型 0：学习，1：创造
     child = db.RelationshipProperty('ChildColumn')
 
     def column_dict(self):
@@ -262,15 +283,15 @@ class Column(db.Model):
 class ChildColumn(db.Model):
     __table_name__ = 'child_column'
     id = db.Column(db.INT, primary_key=True)
-    name = db.Column(db.VARCHAR)                                    # 栏目名
-    introduction = db.Column(db.VARCHAR)                            # 介绍
+    name = db.Column(db.VARCHAR)  # 栏目名
+    introduction = db.Column(db.VARCHAR)  # 介绍
     state = db.Column(db.SMALLINT)
     location = db.Column(db.INT)
     praise = db.Column(db.INT)
     time = db.Column(db.DATETIME)
     number = db.Column(db.INT)
-    picture = db.Column(db.VARCHAR)                                 # 图片路径
-    type = db.Column(db.INT)                                        # 类型 0：学习，1：创造
+    picture = db.Column(db.VARCHAR)  # 图片路径
+    type = db.Column(db.INT)  # 类型 0：学习，1：创造
     father_id = db.Column(db.INT, db.ForeignKey('column.id'))
 
 
@@ -282,20 +303,20 @@ class ChildColumn(db.Model):
 class Content(db.Model):
     __table_name__ = 'content'
     id = db.Column(db.INT, primary_key=True)
-    name = db.Column(db.VARCHAR)                            # 标题
-    subtitle = db.Column(db.VARCHAR)                        # 副标题
-    content_details = db.Column(db.TEXT)                    # 内容详情
-    time = db.Column(db.DATETIME)                           # 创建时间
-    phone = db.Column(db.VARCHAR)                           # 创建人
-    photo = db.Column(db.VARCHAR)                           #
+    name = db.Column(db.VARCHAR)  # 标题
+    subtitle = db.Column(db.VARCHAR)  # 副标题
+    content_details = db.Column(db.TEXT)  # 内容详情
+    time = db.Column(db.DATETIME)  # 创建时间
+    phone = db.Column(db.VARCHAR)  # 创建人
+    photo = db.Column(db.VARCHAR)  #
     video = db.Column(db.VARCHAR)
     audio = db.Column(db.VARCHAR)
     url = db.Column(db.VARCHAR)
-    visition = db.Column(db.SMALLINT)                       # 是否可见
-    view_type = db.Column(db.INT)                           # 视图类型
+    visition = db.Column(db.SMALLINT)  # 是否可见
+    view_type = db.Column(db.INT)  # 视图类型
     rich_text = db.Column(db.TEXT)
     live = db.Column(db.INT)
-    type = db.Column(db.INT)                                # 类型 0 学习 1制造
+    type = db.Column(db.INT)  # 类型 0 学习 1制造
     father_id = db.Column(db.INT, db.ForeignKey('child_column.id'))
 
     def column_dict(self):
@@ -313,14 +334,14 @@ class Content(db.Model):
 class Problem(db.Model):
     __table_name__ = 'problem'
     id = db.Column(db.INT, primary_key=True)
-    user = db.Column(db.VARCHAR)                # 提问人
-    content = db.Column(db.VARCHAR)             # 内容
-    time = db.Column(db.DATETIME)               # 时间
-    picture = db.Column(db.VARCHAR)             # 图片
-    video = db.Column(db.VARCHAR)               #
+    user = db.Column(db.VARCHAR)  # 提问人
+    content = db.Column(db.VARCHAR)  # 内容
+    time = db.Column(db.DATETIME)  # 时间
+    picture = db.Column(db.VARCHAR)  # 图片
+    video = db.Column(db.VARCHAR)  #
     audio = db.Column(db.VARCHAR)
     number = db.Column(db.INT)
-    problem = db.Column(db.INT)                 # 来源
+    problem = db.Column(db.INT)  # 来源
     answer = db.RelationshipProperty('Answer')
 
 
