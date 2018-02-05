@@ -31,7 +31,7 @@ class DevelopmentConfig(Config):
     MAIL_USERNAME = os.environ.get('MAIL_USERNAME')
     MAIL_PASSWORD = os.environ.get('MAIL_PASSWORD')
     SQLALCHEMY_DATABASE_URI = 'mysql://root:lunhui1995@localhost:3306/soul_sql'
-    SECRET_KEY = 'the quick brown fox jumps over the lazy dog'
+    SECRET_KEY = 'HelloWord Soul'
 
 
 class TestingConfig(Config):

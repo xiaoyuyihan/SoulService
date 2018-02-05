@@ -15,6 +15,11 @@ login_manager = LoginManager()
 # LoginManager 对象的 session_protection 属性可以设为 None 、 'basic' 或 'strong'设为 'strong' 时,Flask-Login 会记录客户端
 # IP地址和浏览器的用户代理信息,如果发现异动就登出用户。
 login_manager.session_protection = 'strong'
+login_manager.login_message = {
+        "Flag": False,
+        "data": "用户未登录",
+        "Message": "USER_NOT_LOGIN"
+    }
 
 
 def create_app(config_name):

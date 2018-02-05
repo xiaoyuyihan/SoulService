@@ -45,7 +45,7 @@ class UserInformation(db.Model, UserMixin):
     def get_id(self):
         return self.phone
 
-    def generate_auth_token(self, expiration=600):
+    def generate_auth_token(self, expiration=60*60*24):
         s = Serializer(app.config['SECRET_KEY'], expires_in=expiration)
         return s.dumps({'phone': self.phone})
 
@@ -211,6 +211,12 @@ class Subject(db.Model):
     picture = db.Column(db.VARCHAR)
     father_id = db.Column(db.INT, db.ForeignKey('major.identity'))
 
+    def column_dict(self):
+        self.time = str(self.time)
+        model_dict = dict(self.__dict__)
+        del model_dict['_sa_instance_state']
+        return model_dict
+
 
 """
 DIY方向表
@@ -229,6 +235,12 @@ class Orientation(db.Model):
     picture = db.Column(db.VARCHAR)
     child = db.RelationshipProperty('Description')
 
+    def column_dict(self):
+        self.time = str(self.time)
+        model_dict = dict(self.__dict__)
+        del model_dict['_sa_instance_state']
+        return model_dict
+
 
 """
 DIY种类表
@@ -246,6 +258,12 @@ class Description(db.Model):
     introduction = db.Column(db.VARCHAR)
     picture = db.Column(db.VARCHAR)
     father_id = db.Column(db.INT, db.ForeignKey('orientation.identity'))
+
+    def column_dict(self):
+        self.time = str(self.time)
+        model_dict = dict(self.__dict__)
+        del model_dict['_sa_instance_state']
+        return model_dict
 
 
 """
@@ -285,14 +303,18 @@ class ChildColumn(db.Model):
     id = db.Column(db.INT, primary_key=True)
     name = db.Column(db.VARCHAR)  # 栏目名
     introduction = db.Column(db.VARCHAR)  # 介绍
-    state = db.Column(db.SMALLINT)
     location = db.Column(db.INT)
     praise = db.Column(db.INT)
     time = db.Column(db.DATETIME)
-    number = db.Column(db.INT)
     picture = db.Column(db.VARCHAR)  # 图片路径
     type = db.Column(db.INT)  # 类型 0：学习，1：创造
     father_id = db.Column(db.INT, db.ForeignKey('column.id'))
+
+    def column_dict(self):
+        self.time = str(self.time)
+        model_dict = dict(self.__dict__)
+        del model_dict['_sa_instance_state']
+        return model_dict
 
 
 """
@@ -318,6 +340,7 @@ class Content(db.Model):
     live = db.Column(db.INT)
     type = db.Column(db.INT)  # 类型 0 学习 1制造
     father_id = db.Column(db.INT, db.ForeignKey('child_column.id'))
+    column_id = db.Column(db.INT)
 
     def column_dict(self):
         self.time = str(self.time)
@@ -359,6 +382,12 @@ class Answer(db.Model):
     agree = db.Column(db.INT)
     not_agree = db.Column(db.INT)
     question_id = db.Column(db.INT, db.ForeignKey('problem.id'))
+
+    def column_dict(self):
+        self.time = str(self.time)
+        model_dict = dict(self.__dict__)
+        del model_dict['_sa_instance_state']
+        return model_dict
 
 
 """

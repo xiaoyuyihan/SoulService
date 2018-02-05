@@ -1,8 +1,10 @@
 # 接口
 import os
 
+from sqlalchemy import or_
+
 from . import api
-from flask import request, g
+from flask import request
 from flask_login import login_user, logout_user, login_required, current_user
 import random
 import time, datetime
@@ -10,7 +12,7 @@ from tool import aliyun_MSM
 import uuid
 from app.models import ValidateCode, Major, UserInformation, \
     UserRegistered, Login, Column, ChildColumn, Description, Content, Preference, \
-    Subject, Orientation
+    Subject, Orientation, Problem, Answer, ValidateCode
 from app import db, auth, login_manager
 from manage import photos, app
 import json
@@ -53,8 +55,8 @@ def registered():
         user_status = request.values.get('status', default=0, type=int)  # 账户状态
         sex = request.values.get('sex', default=0, type=int)  # 性别
         birthday = StrToDate(request.values.get('birthday', default=None, type=str))  # 生日
-        uuid = request.values.get('sex', default='', type=str)  # 客户端唯一ID
-        introduction = request.values.get('introduction', default='请填写签名', type=str)  # 签名
+        uuid = request.values.get('sex', default=None, type=str)  # 客户端唯一ID
+        introduction = request.values.get('introduction', default='给自己的世界一点不一样的言论吧', type=str)  # 签名
         address = request.values.get('address', default=None, type=str)  # 地址
         learnInterests = InformationSplit(request.values.get('learnInterest', default=None, type=str))  # 学习兴趣点
         manufactureInterests = InformationSplit(
@@ -75,7 +77,7 @@ def registered():
         db.session.commit()
         return json.dumps(sendData(True, "注册成功", 'OK'))
     else:
-        return json.dumps(sendData(False, "该手机号已注册，如忘记密码请找回密码。", "ERROR_ACCOUNT_REGISTERED"))
+        return json.dumps(sendData(False, "该手机号已注册。", "ERROR_ACCOUNT_REGISTERED"))
 
 
 def StrToDate(date):
@@ -104,6 +106,7 @@ def login():
     password = request.values.get('password', default=None, type=str)
     login_time = getCurrentDateTime()
     login_ip = str(request.remote_addr)
+    uuid = request.values.get('uuid', default=None, type=str)
     login_mode = request.values.get('mode', default=None, type=int)
     longitude = request.values.get('longitude', default='', type=str)
     latitude = request.values.get('latitude', default='', type=str)
@@ -114,9 +117,15 @@ def login():
         user = UserInformation.query.filter_by(phone=phone).first()
     except Exception as e:
         user = None
-    if user is not None and user.verify_password(password):
+    if uuid is not None and user.uuid is not uuid:
+        login.state = -2
+        data = json.dumps(sendData(False, "设备号错误，请验证后再次登陆", 'ERROR_UUID'))
+    elif user is not None and user.verify_password(password):
         login.state = 1
-        data = json.dumps(sendData(True, {"token": str(user.generate_auth_token()), "msg": "登陆成功"}, 'OK'))
+        data = json.dumps(sendData(True, {"token": str(user.generate_auth_token()),
+                                          "time": str(time.time()),
+                                          "cycle": str(60 * 60 * 24),
+                                          "msg": "登陆成功"}, 'OK'))
         login_user(user)
     elif user is None:
         login.state = 0
@@ -129,6 +138,35 @@ def login():
     db.session.add(login)
     db.session.commit()
     return data
+
+
+"""
+更换设备UUID
+先检测验证码时间 5分钟
+"""
+
+
+@api.route('/api/replaceUUID', methods=['POST', 'GET'])
+def replaceUUID():
+    phone = request.values.get('username', default=None, type=str)
+    uuid = request.values.get('uuid', default=None, type=str)
+    try:
+        timeCode = ValidateCode.query.filter_by(phone=phone).first().time
+    except Exception as e:
+        timeCode = None
+    if timeCode is None and time.time - timeCode > 1000 * 60 * 3:
+        return json.dumps(sendData(False, "注册码失效。", "ERROR_ACCOUNT_REGISTERED"))
+    else:
+        try:
+            user = UserInformation.query.filter_by(phone=phone).first();
+        except Exception as e:
+            user = None
+        if user is None:
+            return json.dumps(sendData(False, "该手机号未注册", 'ERROR_NO_USER'))
+        user.uuid = uuid
+        db.session.add(user)
+        db.session.commit()
+        return json.dumps(sendData(True, "修改完成,请登录", 'OK'))
 
 
 """
@@ -316,16 +354,16 @@ def setModular():
 
 
 """
-获取某个学科下的栏目
+获取自己某个学科下的栏目
 @fatherID      父ID    0 全部
 @:columnType          类型   0 学科     1 创造      2 全部
 @phone          用户
 """
 
 
-@api.route("/api/getColumn", methods=['POST', 'GET'])
+@api.route("/api/getUserColumn", methods=['POST', 'GET'])
 @login_required
-def getColumn():
+def getUserColumn():
     columnType = request.values.get('columnType', default=2, type=int)
     fatherID = request.values.get('fatherID', default=0, type=str)
     phone = current_user.get_id()
@@ -334,20 +372,24 @@ def getColumn():
     if columnType is 2:
         # 无父ID
         if fatherID is 0:
-            columns = Column.query.filter_by(phone=phone).order_by(Column.time.desc()).all()
+            columns = Column.query.filter_by(phone=phone).order_by(Column.time.desc()) \
+                .all()
         else:
             columns = Column.query.filter_by(phone=phone, father_id=fatherID) \
-                .order_by(Column.time.desc()).all()
+                .order_by(Column.time.desc()) \
+                .all()
     else:
         if fatherID is 0:
             columns = Column.query.filter_by(phone=phone,
                                              type=columnType) \
-                .order_by(Column.time.desc()).all()
+                .order_by(Column.time.desc()) \
+                .all()
         else:
             columns = Column.query.filter_by(phone=phone,
                                              type=columnType,
                                              father_id=fatherID) \
-                .order_by(Column.time.desc()).all()
+                .order_by(Column.time.desc()) \
+                .all()
 
     datas = []
     for column in columns:
@@ -356,6 +398,49 @@ def getColumn():
                 "introduction": column.introduction,
                 "time": column.time,
                 "phone": column.accounts,
+                "picture": column.picture,
+                "type": column.type,
+                "child": getChildColumn(column.child)
+                }
+        datas.append(data)
+    return json.dumps(sendData(True, datas, 'OK'))
+
+
+@api.route("/api/getColumn", methods=['POST', 'GET'])
+@login_required
+def getColumn():
+    columnType = request.values.get('columnType', default=2, type=int)
+    fatherID = request.values.get('fatherID', default=None, type=str)
+    page = request.values.get('page', default=1, type=int)
+
+    # 全部类型
+    if columnType is 2:
+        # 无父ID
+        if fatherID is None:
+            columns = Column.query.order_by(Column.time.desc()) \
+                .paginate(page=page, per_page=25, error_out=False)
+        else:
+            columns = Column.query.filter_by(father_id=fatherID) \
+                .order_by(Column.time.desc()) \
+                .paginate(page=page, per_page=25, error_out=False)
+    else:
+        if fatherID is None:
+            columns = Column.query.filter_by(type=columnType) \
+                .order_by(Column.time.desc()) \
+                .paginate(page=page, per_page=25, error_out=False)
+        else:
+            columns = Column.query.filter_by(type=columnType,
+                                             father_id=fatherID) \
+                .order_by(Column.time.desc()) \
+                .paginate(page=page, per_page=25, error_out=False)
+
+    datas = []
+    for column in columns.items:
+        data = {"id": column.id,
+                "name": column.name,
+                "introduction": column.introduction,
+                "time": str(column.time),
+                "phone": column.phone,
                 "picture": column.picture,
                 "type": column.type,
                 "child": getChildColumn(column.child)
@@ -375,8 +460,8 @@ def getChildColumn(modules):
         data = {"id": module.id,
                 "name": module.name,
                 "introduction": module.introduction,
-                "phone": module.phone,
-                "time": module.time,
+                "location": module.location,
+                "time": str(module.time),
                 "picture": module.picture,
                 "type": module.type
                 }
@@ -429,8 +514,9 @@ def setChildColumn():
     picture = saveRequestFile('picture', 'photos/avatar')
     columnType = request.values.get('columnType', type=int)
     father_id = request.values.get('father_id', type=int)
+    location = request.values.get('location', default=0, type=int)
     column = ChildColumn(name=name, introduction=introduction, time=currentTime,
-                         phone=phone, picture=picture, type=columnType,
+                         picture=picture, type=columnType, location=location,
                          father_id=father_id)
     db.session.add(column)
     db.session.commit()
@@ -449,14 +535,126 @@ def setChildColumn():
 def getColumnContent():
     columnID = request.values.get('columnID', default=None, type=str)
     columnType = request.values.get('columnType', type=int)
+    page = request.values.get('page', default=1, type=int)
     if columnID is None:
-        contents = Content.query.filter_by(Content.type is columnType) \
-            .order_by(Content.time.desc()).all()
+        contents = Content.query.with_entities(Content.id,
+                                               Content.name,
+                                               Content.subtitle,
+                                               Content.time,
+                                               Content.content_details,
+                                               Content.phone,
+                                               Content.view_type,
+                                               Content.father_id,
+                                               Content.column_id,
+                                               Content.type,
+                                               Column.name,
+                                               UserInformation.username
+                                               ) \
+            .filter_by(visition=0) \
+            .join(Column, Column.id == Content.column_id) \
+            .join(UserInformation, UserInformation.phone == Content.phone) \
+            .order_by(Content.time.desc()) \
+            .paginate(page=page, per_page=25, error_out=False)
     else:
-        contents = Content.query.filter_by(Content.father_identity is columnID and
-                                           Content.type is columnType) \
-            .order_by(Content.time.desc()).all()
-    return json.dumps(sendData(True, SQLToData(contents), 'OK'))
+        contents = Content.query.with_entities(Content.id,
+                                               Content.name,
+                                               Content.subtitle,
+                                               Content.time,
+                                               Content.content_details,
+                                               Content.phone,
+                                               Content.view_type,
+                                               Content.father_id,
+                                               Content.column_id,
+                                               Content.type,
+                                               Column.name,
+                                               UserInformation.username
+                                               ) \
+            .filter(Content.father_identity is columnID and
+                    Content.type is columnType and
+                    Content.visition is 0) \
+            .join(Column, Column.id == Content.column_id) \
+            .join(UserInformation, UserInformation.phone == Content.phone) \
+            .order_by(Content.time.desc()) \
+            .paginate(page=page, per_page=25, error_out=False)
+    return json.dumps(sendData(True, ContentToData(contents.items), 'OK'))
+
+
+def ContentToData(columns):
+    data = []
+    for content in columns:
+        data.append({"id": content[0],
+                     "name": content[1],
+                     "subtitle": content[2],
+                     "time": str(content[3]),
+                     "content": content[4],
+                     "phone": content[5],
+                     "viewType": content[6],
+                     "fatherID": content[7],
+                     "columnId": content[8],
+                     "type": content[9],
+                     "columnName": content[10],
+                     "username": content[11]
+                     })
+    return data
+
+
+"""
+获取自己栏目内容
+@ columnID  
+@ columnType
+"""
+
+
+@api.route('/api/getUserColumnContent', methods=['POST', 'GET'])
+@login_required
+def getUserColumnContent():
+    columnID = request.values.get('columnID', default=None, type=str)
+    columnType = request.values.get('columnType', type=int)
+    username = current_user.get_id()
+    page = request.values.get('page', default=1, type=int)
+    if columnID is None:
+        contents = Content.query.with_entities(Content.id,
+                                               Content.name,
+                                               Content.subtitle,
+                                               Content.time,
+                                               Content.content_details,
+                                               Content.phone,
+                                               Content.view_type,
+                                               Content.father_id,
+                                               Content.column_id,
+                                               Content.type,
+                                               Column.name,
+                                               UserInformation.username
+                                               ) \
+            .filter_by(phone=username) \
+            .filter(or_(Content.visition == 0, Content.visition == 1)) \
+            .join(Column, Column.id == Content.column_id) \
+            .join(UserInformation, UserInformation.phone == Content.phone) \
+            .order_by(Content.time.desc()) \
+            .paginate(page=page, per_page=25, error_out=False)
+    else:
+        contents = Content.query.with_entities(Content.id,
+                                               Content.name,
+                                               Content.subtitle,
+                                               Content.time,
+                                               Content.content_details,
+                                               Content.phone,
+                                               Content.view_type,
+                                               Content.father_id,
+                                               Content.column_id,
+                                               Content.type,
+                                               Column.name,
+                                               UserInformation.username
+                                               ) \
+            .filter_by(father_id=columnID,
+                       type=columnType,
+                       phone=username) \
+            .filter(or_(Content.visition == 0, Content.visition == 1)) \
+            .join(Column, Column.id == Content.column_id) \
+            .join(UserInformation, UserInformation.phone == Content.phone) \
+            .order_by(Content.time.desc()) \
+            .paginate(page=page, per_page=25, error_out=False)
+    return json.dumps(sendData(True, ContentToData(contents.items), 'OK'))
 
 
 """
@@ -468,7 +666,7 @@ def getColumnContent():
 @login_required
 def setColumnContent():
     name = request.values.get('name')
-    subitile = request.values.get('subtitle')
+    subtitle = request.values.get('subtitle', default=None)
     content_details = request.values.get('content')
     time = getCurrentDateTime()
     phone = current_user.get_id()
@@ -477,24 +675,62 @@ def setColumnContent():
     audio = saveRequestFile('audio')
     visition = request.values.get('visition', type=bool)
     view_type = request.values.get('viewType')
-    rich_text = request.values.get('rich_text')
+    rich_text = request.values.get('rich_text', default=None)
     type = request.values.get('type')
     father_id = request.values.get('fatherID')
-    content = Content(name=name, subitile=subitile, content_details=content_details,
+    column_id = request.values.get('columnID')
+    content = Content(name=name, subtitle=subtitle, content_details=content_details,
                       time=time, phone=phone, photo=photo, video=video, audio=audio,
-                      visition=visition, view_type=view_type, rich_tetx=rich_text,
-                      type=type, father_id=father_id)
+                      visition=visition, view_type=view_type, rich_text=rich_text,
+                      type=type, father_id=father_id, column_id=column_id)
     db.session.add(content)
     db.session.commit()
+    return json.dumps(sendData(True, "提交成功", 'OK'))
 
 
 """
 获取提问
 """
 
+
+@api.route('/api/getQuestion', methods=['POST', 'GET'])
+@login_required
+def getQuestion():
+    page = request.values.get('page', default=1, type=int)
+    contents = Problem.query.order_by(Content.time.desc()) \
+        .paginate(page=page, per_page=25, error_out=False).all()
+    datas = []
+    for content in contents:
+        data = {"name": content.name,
+                "identity": content.identity,
+                "introduction": content.introduction,
+                "picture": content.picture}
+        datas.append(data)
+    return json.dumps(sendData(True, datas, 'OK'))
+
+
 """
-提问旗下回答
+获取回答
 """
+
+
+def getAnswer():
+    page = request.values.get('page', default=1, type=int)
+    question_id = request.values.get('question_id', type=int)
+    contents = Answer.query.filter_by(question_id=question_id).order_by(Content.time.desc()) \
+        .paginate(page=page, per_page=25, error_out=False).all()
+    datas = []
+    return json.dumps(sendData(True, datas, 'OK'))
+
+
+"""
+获取评价
+"""
+
+
+def getComments():
+    return None
+
 
 """
 获取验证码
@@ -528,7 +764,7 @@ def sendData(Flag, data, Message):
 def SQLToData(columns):
     data = []
     for content in columns:
-        data.append(content.column_dict())
+        data.append(content)
     return data
 
 
