@@ -4,7 +4,7 @@ from flask_login import login_required, current_user
 from app.models import Content, UserInformation, Column, \
     Preference, Problem
 import json
-from .information import sendData, SQLToData, ContentToData
+from .information import sendData, SQLToData, ContentToData, ContentAddComment
 
 """
 搜索
@@ -46,14 +46,19 @@ def NewContent():
                                                  Content.father_id,
                                                  Content.column_id,
                                                  Content.type,
+                                                 Content.visition,
+                                                 Content.photo,
+                                                 Content.live,
                                                  Column.name,
-                                                 UserInformation.username) \
+                                                 Column.father_id,
+                                                 UserInformation.username,
+                                                 UserInformation.avatar) \
         .filter_by(visition=0) \
         .join(Column, Column.id == Content.column_id) \
         .join(UserInformation, UserInformation.phone == Content.phone) \
         .order_by(Content.time.desc()) \
         .paginate(page=page, per_page=25, error_out=False)
-    return json.dumps(sendData(True, ContentToData(ColumnContents.items), 'OK'))
+    return json.dumps(sendData(True, ContentToData(ContentAddComment(ColumnContents.items)), 'OK'))
 
 
 """
@@ -75,14 +80,19 @@ def HotContent():
                                                  Content.father_id,
                                                  Content.column_id,
                                                  Content.type,
+                                                 Content.visition,
+                                                 Content.photo,
+                                                 Content.live,
                                                  Column.name,
-                                                 UserInformation.username) \
+                                                 Column.father_id,
+                                                 UserInformation.username,
+                                                 UserInformation.avatar) \
         .filter_by(visition=0) \
         .join(Column, Column.id == Content.column_id) \
         .join(UserInformation, UserInformation.phone == Content.phone) \
         .order_by(Content.live.desc()) \
         .paginate(page=page, per_page=25, error_out=False)
-    return json.dumps(sendData(True, ContentToData(ColumnContents.items), 'OK'))
+    return json.dumps(sendData(True, ContentToData(ContentAddComment(ColumnContents.items)), 'OK'))
 
 
 """
@@ -105,8 +115,13 @@ def Recommended():
                                                  Content.father_id,
                                                  Content.column_id,
                                                  Content.type,
+                                                 Content.visition,
+                                                 Content.photo,
+                                                 Content.live,
                                                  Column.name,
-                                                 UserInformation.username) \
+                                                 Column.father_id,
+                                                 UserInformation.username,
+                                                 UserInformation.avatar) \
         .filter_by(visition=0) \
         .join(Preference, Content.father_id == Preference.child_column_id and
               Content.type == Preference.preference_type) \
@@ -115,4 +130,4 @@ def Recommended():
         .join(UserInformation, UserInformation.phone == Content.phone) \
         .order_by(Content.time.desc()) \
         .paginate(page=page, per_page=25, error_out=False)
-    return json.dumps(sendData(True, ContentToData(ColumnContents.items), 'OK'))
+    return json.dumps(sendData(True, ContentToData(ContentAddComment(ColumnContents.items)), 'OK'))

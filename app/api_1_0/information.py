@@ -12,9 +12,9 @@ from tool import aliyun_MSM
 import uuid
 from app.models import ValidateCode, Major, UserInformation, \
     UserRegistered, Login, Column, ChildColumn, Description, Content, Preference, \
-    Subject, Orientation, Problem, Answer, ValidateCode
+    Subject, Orientation, Problem, Answer, ValidateCode, Comments
 from app import db, auth, login_manager
-from manage import photos, app
+from manage import photos, app, audios
 import json
 
 """
@@ -77,7 +77,7 @@ def registered():
         db.session.commit()
         return json.dumps(sendData(True, "注册成功", 'OK'))
     else:
-        return json.dumps(sendData(False, "该手机号已注册。", "ERROR_ACCOUNT_REGISTERED"))
+        return json.dumps(sendData(False, "该手机号已注册,请登录。", "ERROR_ACCOUNT_REGISTERED"))
 
 
 def StrToDate(date):
@@ -119,7 +119,7 @@ def login():
         user = None
     if uuid is not None and user.uuid is not uuid:
         login.state = -2
-        data = json.dumps(sendData(False, "设备号错误，请验证后再次登陆", 'ERROR_UUID'))
+        data = json.dumps(sendData(False, {"msg": "设备号错误，请验证后再次登陆"}, 'ERROR_UUID'))
     elif user is not None and user.verify_password(password):
         login.state = 1
         data = json.dumps(sendData(True, {"token": str(user.generate_auth_token()),
@@ -129,7 +129,7 @@ def login():
         login_user(user)
     elif user is None:
         login.state = 0
-        data = json.dumps(sendData(False, "该帐号未注册，请注册后再次登录", 'ERROR_NO_USER'))
+        data = json.dumps(sendData(False, {"msg": "该帐号未注册，请注册后再次登录"}, 'ERROR_NO_USER'))
 
     else:
         login.state = -1
@@ -312,6 +312,37 @@ def getDescription(modules):
 
 
 """
+获取所有模块
+"""
+
+
+@api.route('/api/getAllModule', methods=['POST', 'GET'])
+def getAllModule():
+    majors = Major.query.all()
+    majorData = []
+    for father in majors:
+        data = {"name": father.name,
+                "identity": father.identity,
+                "introduction": father.introduction,
+                "picture": father.picture,
+                "child": getSubject(father.child)
+                }
+        majorData.append(data)
+    orientations = Orientation.query.all()
+    orientationData = []
+    for father in orientations:
+        data = {"name": father.name,
+                "identity": father.identity,
+                "introduction": father.introduction,
+                "url": father.url,
+                "picture": father.picture,
+                "child": getDescription(father.child)
+                }
+        orientationData.append(data)
+    return json.dumps(sendData(True, {"major": majorData, "orientation": orientationData}, 'OK'))
+
+
+"""
 提交专业
 @ name: 名称
 @ identity: id
@@ -334,7 +365,7 @@ def setModular():
     introduction = request.values.get('introduction', type=str)
     majorType = request.values.get('type', type=int)
     father_id = request.values.get('father_id', type=int)
-    file_url = saveRequestFile(value='picture')
+    file_url = savePhotoRequestFile(value='picture')
 
     if majorType is 0:
         column = Major(name=name, identity=identity, time=registered_time, founder=founder,
@@ -396,8 +427,8 @@ def getUserColumn():
         data = {"id": column.id,
                 "name": column.name,
                 "introduction": column.introduction,
-                "time": column.time,
-                "phone": column.accounts,
+                "time": str(column.time),
+                "phone": column.phone,
                 "picture": column.picture,
                 "type": column.type,
                 "child": getChildColumn(column.child)
@@ -463,7 +494,8 @@ def getChildColumn(modules):
                 "location": module.location,
                 "time": str(module.time),
                 "picture": module.picture,
-                "type": module.type
+                "type": module.type,
+                "fatherID": module.father_id
                 }
         datas.append(data)
     return datas
@@ -478,6 +510,7 @@ def getChildColumn(modules):
 @ columnType：0 创造 1 制作
 @ father_id ：父ID
 @ picture： 附件照片
+添加多次
 """
 
 
@@ -488,7 +521,7 @@ def setColumn():
     introduction = request.values.get('introduction', type=str)
     currentTime = getCurrentDateTime()
     phone = current_user.get_id()
-    picture = saveRequestFile('picture', 'photos/avatar')
+    picture = savePhotoRequestFile('picture', 'photos/avatar')
     columnType = request.values.get('columnType', type=int)
     father_id = request.values.get('father_id', type=int)
     column = Column(name=name, introduction=introduction, time=currentTime,
@@ -496,7 +529,14 @@ def setColumn():
                     father_id=father_id)
     db.session.add(column)
     db.session.commit()
-    return json.dumps(sendData(True, "提交成功", "OK"))
+    return json.dumps(sendData(True, {"id": column.id,
+                                      "name": column.name,
+                                      "introduction": column.introduction,
+                                      "time": str(column.time),
+                                      "phone": column.phone,
+                                      "picture": column.picture,
+                                      "type": column.type
+                                      }, "OK"))
 
 
 """
@@ -511,7 +551,7 @@ def setChildColumn():
     introduction = request.values.get('introduction', type=str)
     currentTime = getCurrentDateTime()
     phone = current_user.get_id()
-    picture = saveRequestFile('picture', 'photos/avatar')
+    picture = savePhotoRequestFile('picture', 'photos/avatar')
     columnType = request.values.get('columnType', type=int)
     father_id = request.values.get('father_id', type=int)
     location = request.values.get('location', default=0, type=int)
@@ -520,7 +560,13 @@ def setChildColumn():
                          father_id=father_id)
     db.session.add(column)
     db.session.commit()
-    return json.dumps(sendData(True, "提交成功", "OK"))
+    return json.dumps(sendData(True, {"id": column.id,
+                                      "name": column.name,
+                                      "introduction": column.introduction,
+                                      "time": str(column.time),
+                                      "picture": column.picture,
+                                      "type": column.type
+                                      }, "OK"))
 
 
 """
@@ -547,8 +593,13 @@ def getColumnContent():
                                                Content.father_id,
                                                Content.column_id,
                                                Content.type,
+                                               Content.visition,
+                                               Content.photo,
+                                               Content.live,
                                                Column.name,
-                                               UserInformation.username
+                                               Column.father_id,
+                                               UserInformation.username,
+                                               UserInformation.avatar
                                                ) \
             .filter_by(visition=0) \
             .join(Column, Column.id == Content.column_id) \
@@ -566,8 +617,13 @@ def getColumnContent():
                                                Content.father_id,
                                                Content.column_id,
                                                Content.type,
+                                               Content.visition,
+                                               Content.photo,
+                                               Content.live,
                                                Column.name,
-                                               UserInformation.username
+                                               Column.father_id,
+                                               UserInformation.username,
+                                               UserInformation.avatar
                                                ) \
             .filter(Content.father_identity is columnID and
                     Content.type is columnType and
@@ -576,7 +632,17 @@ def getColumnContent():
             .join(UserInformation, UserInformation.phone == Content.phone) \
             .order_by(Content.time.desc()) \
             .paginate(page=page, per_page=25, error_out=False)
-    return json.dumps(sendData(True, ContentToData(contents.items), 'OK'))
+    return json.dumps(sendData(True, ContentToData(ContentAddComment(contents.items)), 'OK'))
+
+
+def ContentAddComment(contents):
+    data = []
+    for content in contents:
+        number = len(Comments.query.filter_by(identity=content[0], type=content[9]).all())
+        content = list(content)
+        content.append(number)
+        data.append(content)
+    return data
 
 
 def ContentToData(columns):
@@ -590,10 +656,16 @@ def ContentToData(columns):
                      "phone": content[5],
                      "viewType": content[6],
                      "fatherID": content[7],
-                     "columnId": content[8],
+                     "columnID": content[8],
                      "type": content[9],
-                     "columnName": content[10],
-                     "username": content[11]
+                     "visition": content[10],
+                     "photo": content[11],
+                     "live": content[12],
+                     "columnName": content[13],
+                     "columnFatherID": content[14],
+                     "username": content[15],
+                     "avatar": content[16],
+                     "number": content[17]
                      })
     return data
 
@@ -623,8 +695,12 @@ def getUserColumnContent():
                                                Content.father_id,
                                                Content.column_id,
                                                Content.type,
+                                               Content.visition,
+                                               Content.photo,
+                                               Content.live,
                                                Column.name,
-                                               UserInformation.username
+                                               UserInformation.username,
+                                               UserInformation.avatar
                                                ) \
             .filter_by(phone=username) \
             .filter(or_(Content.visition == 0, Content.visition == 1)) \
@@ -643,8 +719,12 @@ def getUserColumnContent():
                                                Content.father_id,
                                                Content.column_id,
                                                Content.type,
+                                               Content.visition,
+                                               Content.photo,
+                                               Content.live,
                                                Column.name,
-                                               UserInformation.username
+                                               UserInformation.username,
+                                               UserInformation.avatar
                                                ) \
             .filter_by(father_id=columnID,
                        type=columnType,
@@ -670,19 +750,21 @@ def setColumnContent():
     content_details = request.values.get('content')
     time = getCurrentDateTime()
     phone = current_user.get_id()
-    photo = saveRequestFile('photo')
-    video = saveRequestFile('video')
-    audio = saveRequestFile('audio')
-    visition = request.values.get('visition', type=bool)
-    view_type = request.values.get('viewType')
+    photo = savePhotoRequestFile('photo')
+    video = saveVideoRequestFile('video')
+    audio = saveAudioRequestFile('audio')
+    visition = request.values.get('visition', type=int)
+    view_type = request.values.get('viewType', default=0)
     rich_text = request.values.get('rich_text', default=None)
     type = request.values.get('type')
     father_id = request.values.get('fatherID')
     column_id = request.values.get('columnID')
+    if father_id == "-1":
+        father_id = None
     content = Content(name=name, subtitle=subtitle, content_details=content_details,
                       time=time, phone=phone, photo=photo, video=video, audio=audio,
                       visition=visition, view_type=view_type, rich_text=rich_text,
-                      type=type, father_id=father_id, column_id=column_id)
+                      type=type, father_id=father_id, column_id=column_id, live=0)
     db.session.add(content)
     db.session.commit()
     return json.dumps(sendData(True, "提交成功", 'OK'))
@@ -777,6 +859,36 @@ def getCurrentDateTime():
     return time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time()))
 
 
+@api.route('/api/savePhotoFile', methods=['POST'])
+@login_required
+def savePhotoFile():
+    photo_url = savePhotoRequestFile('file')
+    if photo_url is not None:
+        return json.dumps(sendData(True, photo_url, 'OK'))
+    else:
+        return json.dumps(sendData(False, "保存失败", 'SAVE_ERROR'))
+
+
+@api.route('/api/saveAudioFile', methods=['POST'])
+@login_required
+def saveAudioFile():
+    photo_url = saveAudioRequestFile('file')
+    if photo_url is not None:
+        return json.dumps(sendData(True, photo_url, 'OK'))
+    else:
+        return json.dumps(sendData(False, "保存失败", 'SAVE_ERROR'))
+
+
+@api.route('/api/saveVideoFile', methods=['POST'])
+@login_required
+def saveVideoFile():
+    photo_url = saveVideoRequestFile('file')
+    if photo_url is not None:
+        return json.dumps(sendData(True, photo_url, 'OK'))
+    else:
+        return json.dumps(sendData(False, "保存失败", 'SAVE_ERROR'))
+
+
 """
 保存照片
 @ value request参数
@@ -785,13 +897,42 @@ def getCurrentDateTime():
 """
 
 
-def saveRequestFile(value, fileUrl=None, defaultUrl=None):
+def savePhotoRequestFile(value, fileUrl="photos", defaultUrl=None):
+    file_url = None
     if value in request.files:
         for filename in request.files.getlist(value):
             filename = photos.save(filename, folder=fileUrl)
-            file_url = photos.url(filename)
+            if file_url is None:
+                file_url = photos.url(filename)
+            else:
+                file_url += "," + photos.url(filename)
     else:
         file_url = defaultUrl
+    return file_url
+
+
+def saveVideoRequestFile(value, fileUrl="video"):
+    file_url = None
+    if value in request.files:
+        for file in request.files.getlist(value):
+            # 将文件保存在本地UPLOAD_FOLDER目录下
+            current_url = file.save(os.path.join(fileUrl, file.filename))
+        if file_url is None:
+            file_url = current_url
+        else:
+            file_url += "," + current_url
+    return file_url
+
+
+def saveAudioRequestFile(value, fileUrl="audio"):
+    file_url = None
+    if value in request.files:
+        for filename in request.files.getlist(value):
+            filename = audios.save(filename, folder=fileUrl, name=filename.filename)
+            if file_url is None:
+                file_url = audios.url(filename)
+            else:
+                file_url += "," + photos.url(filename)
     return file_url
 
 

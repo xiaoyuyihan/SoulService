@@ -1,7 +1,8 @@
 # manage.py 用于启动程序以及其他的程序任务。
 import os
+
 from app import create_app
-from flask_uploads import UploadSet, configure_uploads, IMAGES,\
+from flask_uploads import UploadSet, configure_uploads, IMAGES,AUDIO,\
  patch_request_class
 
 app = create_app(os.getenv('FLASK_CONFIG') or 'default')
@@ -13,9 +14,11 @@ app = create_app(os.getenv('FLASK_CONFIG') or 'default')
 对它调用save()方法保存文件，对它调用url()获取文件url，对它调用path()获取文件的绝对地址……
 （你可以把它类比成代表数据库的db）"""
 photos = UploadSet('photos', IMAGES)
+audios = UploadSet('audios', AUDIO)
 configure_uploads(app, photos)
+configure_uploads(app, audios)
 patch_request_class(app, 16*1024*1024)  # 文件大小限制，默认为16MB
 
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0')
+    app.run(host='0.0.0.0', debug=True, threaded=True)

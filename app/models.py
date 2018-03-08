@@ -45,9 +45,9 @@ class UserInformation(db.Model, UserMixin):
     def get_id(self):
         return self.phone
 
-    def generate_auth_token(self, expiration=60*60*24):
+    def generate_auth_token(self, expiration=60 * 60 * 24):
         s = Serializer(app.config['SECRET_KEY'], expires_in=expiration)
-        return s.dumps({'phone': self.phone})
+        return str(s.dumps({'phone': self.phone}), encoding="utf-8")
 
     @staticmethod
     def verify_auth_token(token):
@@ -56,9 +56,10 @@ class UserInformation(db.Model, UserMixin):
             data = s.loads(token)
         except SignatureExpired:
             return None  # valid token, but expired
-        except BadSignature:
+        except BadSignature as e:
             return None  # invalid token
         return data['phone']
+
 
 """
 用户注册表
@@ -285,6 +286,7 @@ class Column(db.Model):
     picture = db.Column(db.VARCHAR)
     type = db.Column(db.INT)  # 类型 0：学习，1：创造
     child = db.RelationshipProperty('ChildColumn')
+    childContent = db.RelationshipProperty('Content')
 
     def column_dict(self):
         self.time = str(self.time)
@@ -303,7 +305,7 @@ class ChildColumn(db.Model):
     id = db.Column(db.INT, primary_key=True)
     name = db.Column(db.VARCHAR)  # 栏目名
     introduction = db.Column(db.VARCHAR)  # 介绍
-    location = db.Column(db.INT)
+    location = db.Column(db.INT)        #位置
     praise = db.Column(db.INT)
     time = db.Column(db.DATETIME)
     picture = db.Column(db.VARCHAR)  # 图片路径
@@ -340,7 +342,7 @@ class Content(db.Model):
     live = db.Column(db.INT)
     type = db.Column(db.INT)  # 类型 0 学习 1制造
     father_id = db.Column(db.INT, db.ForeignKey('child_column.id'))
-    column_id = db.Column(db.INT)
+    column_id = db.Column(db.INT, db.ForeignKey('column.id'))
 
     def column_dict(self):
         self.time = str(self.time)
@@ -404,6 +406,7 @@ class Comments(db.Model):
     praise = db.Column(db.INT)
     content = db.Column(db.VARCHAR)
     type = db.Column(db.INT)
+
 
 
 """

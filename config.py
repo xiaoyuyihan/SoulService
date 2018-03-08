@@ -14,6 +14,7 @@ class Config:
     FLASKY_MAIL_SENDER = os.environ.get('MAIL_USERNAME')
     FLASKY_ADMIN = os.environ.get('FLASKY_ADMIN')
     UPLOADED_PHOTOS_DEST = os.getcwd()
+    UPLOADED_AUDIOS_DEST = os.getcwd()
 
     # 对当前环境的配置初始化
     @staticmethod
